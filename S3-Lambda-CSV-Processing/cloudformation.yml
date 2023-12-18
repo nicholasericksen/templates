@@ -1,0 +1,187 @@
+Parameters:
+
+  BucketName:
+    Type: String
+    Default: transactions-data-234534565
+
+  LambdaRate:
+    Description: >
+      The rate (frequency) at which the batch processing job is run
+    Default: rate(1 minute)
+    AllowedValues:
+      - rate(1 minute)
+      - rate(10 minutes)
+      - rate(60 minutes)
+    Type: String
+
+Resources:
+
+  BasicLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: BasicLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+
+  TransactionBucket:
+    Type: AWS::S3::Bucket
+    Description: Transactional Data and CSV files for processing
+    DependsOn:
+      - LambdaPermission
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt LambdaFunction.Arn
+
+  TransactionS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TransactionBucket
+      PolicyDocument:
+        Statement:
+          -   
+            Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - !Sub arn:aws:s3:::${TransactionBucket}
+              - !Sub arn:aws:s3:::${TransactionBucket}/*
+            Principal:
+              AWS:
+                - !GetAtt BasicLambdaRole.Arn
+  LambdaSchedule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: >
+        A schedule for the Lambda function..
+      ScheduleExpression: !Ref LambdaRate
+      State: ENABLED
+      Targets:
+        - Arn: !Sub ${LambdaFunction.Arn}
+          Id: LambdaSchedule
+
+  LambdaSchedulePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Sub ${LambdaFunction.Arn}
+      Principal: 'events.amazonaws.com'
+      SourceArn: !Sub ${LambdaSchedule.Arn}
+
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref LambdaFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${BucketName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs16.x
+      Timeout: 5
+      Handler: index.handler
+      Role: !GetAtt BasicLambdaRole.Arn
+      Code:
+        ZipFile:
+          !Sub
+            - |-
+              var aws = require('aws-sdk');
+
+              var s3 = new aws.S3({ accessKeyId: process.env.ACCESS_KEY, secretAccessKey: process.env.SECRET_KEY, region: process.env.LAMBDA_REGION });
+              
+              var secretsManager = new aws.SecretsManager({region: 'us-east-2'});
+              
+              exports.handler = function(event, context, exit){
+                  //console.log('Received event:', JSON.stringify(event, null, 2));
+                  // Get the Secrets needed
+                  var secret, decodedBinarySecret = false;
+              
+                  secretsManager.getSecretValue({SecretId: 'test-secret'}, function(err, data) {
+                  if (err) {
+                      console.log('Error')
+                      console.log(err);
+                      if (err.code === 'DecryptionFailureException')
+                          // Secrets Manager can't decrypt the protected secret text using the provided KMS key.
+                          // Deal with the exception here, and/or rethrow at your discretion.
+                          throw err;
+                      else if (err.code === 'InternalServiceErrorException')
+                          // An error occurred on the server side.
+                          // Deal with the exception here, and/or rethrow at your discretion.
+                          throw err;
+                      else if (err.code === 'InvalidParameterException')
+                          // You provided an invalid value for a parameter.
+                          // Deal with the exception here, and/or rethrow at your discretion.
+                          throw err;
+                      else if (err.code === 'InvalidRequestException')
+                          // You provided a parameter value that is not valid for the current state of the resource.
+                          // Deal with the exception here, and/or rethrow at your discretion.
+                          throw err;
+                      else if (err.code === 'ResourceNotFoundException')
+                          // We can't find the resource that you asked for.
+                          // Deal with the exception here, and/or rethrow at your discretion.
+                          throw err;
+                  }
+                  else {
+                      console.log("Success");
+                      // Decrypts secret using the associated KMS key.
+                      // Depending on whether the secret is a string or binary, one of these fields will be populated.
+                      if ('SecretString' in data) {
+                          secret = data.SecretString;
+                      } else {
+                          let buff = new Buffer(data.SecretBinary, 'base64');
+                          decodedBinarySecret = buff.toString('ascii');
+                      }
+                  }
+                      console.log("Outputting: \n")
+                      console.log(secret);
+                      console.log(decodedBinarySecret);
+                  });
+              
+                  // Get the object from the event and show its content type
+              
+                  const bucket = event.Records[0].s3.bucket.name;
+              
+                  const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+              
+                  const params = {
+                     Bucket: bucket,
+                     Key: key,
+                  };
+              
+                   s3.getObject(params, function(err, data){
+                       if (err) {
+                         console.log('ERROR ' + err);
+                         exit(err);
+                       } else {
+                         // the data has the content of the uploaded file
+                         var fileContents = data.Body.toString().split("\n");
+                         fileContents.forEach(function (value, i) {
+                           console.log('%d: %s', i, value);
+                         });
+                       }
+                   });
+              
+              };
+            -
+              lambda_function_role_arn: !Ref BasicLambdaRole
