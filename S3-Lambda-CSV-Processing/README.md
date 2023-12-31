@@ -1,4 +1,5 @@
 # TODO
+```
 [X] Secrets Manager integration with Lambda (PG and Private Key)
 [X] Schedule Lambda to Run
 [X] CloudFormation template
@@ -12,7 +13,7 @@
 [] Error handling on Lambda
 [] Convert the JS to a Lambda
 [] Deploy lambda code as zip file from S3 bucket
-
+```
 
 # Overview
 The following CloudFormation template can be used to process batch data which is uploaded
@@ -25,7 +26,7 @@ Install and configure the AWS CLI for ease of use.
 Run the following command from this directory to deploy the cloudformation template.
 
 ```
-aws cloudformation deploy --stack-name PaymentProcessing --template-file cloudformation.yml --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation deploy --stack-name CSVProcessing --template-file cloudformation.yml --capabilities CAPABILITY_NAMED_IAM
 ```
 
 ## Testing
@@ -66,11 +67,11 @@ A test event can be created on the Lambda function such as
         "s3SchemaVersion": "1.0",
         "configurationId": "testConfigRule",
         "bucket": {
-          "name": "transactions-data-9874534",
+          "name": "CSVs-data-9874534",
           "ownerIdentity": {
             "principalId": "EXAMPLE"
           },
-          "arn": "arn:aws:s3:::transactions-data-9874534"
+          "arn": "arn:aws:s3:::CSVs-data-9874534"
         },
         "object": {
           "key": "test-data.csv",

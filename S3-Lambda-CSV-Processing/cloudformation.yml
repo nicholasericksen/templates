@@ -2,7 +2,7 @@ Parameters:
 
   BucketName:
     Type: String
-    Default: transactions-data-234534565
+    Default: CSVs-data-234534565
 
   LambdaRate:
     Description: >
@@ -33,9 +33,9 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/SecretsManagerReadWrite
 
-  TransactionBucket:
+  CSVBucket:
     Type: AWS::S3::Bucket
-    Description: Transactional Data and CSV files for processing
+    Description: CSV files for processing
     DependsOn:
       - LambdaPermission
     Properties:
@@ -50,10 +50,10 @@ Resources:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt LambdaFunction.Arn
 
-  TransactionS3BucketPolicy:
+  CSVS3BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref TransactionBucket
+      Bucket: !Ref CSVBucket
       PolicyDocument:
         Statement:
           -   
@@ -61,8 +61,8 @@ Resources:
               - s3:*
             Effect: Allow
             Resource:
-              - !Sub arn:aws:s3:::${TransactionBucket}
-              - !Sub arn:aws:s3:::${TransactionBucket}/*
+              - !Sub arn:aws:s3:::${CSVBucket}
+              - !Sub arn:aws:s3:::${CSVBucket}/*
             Principal:
               AWS:
                 - !GetAtt BasicLambdaRole.Arn
